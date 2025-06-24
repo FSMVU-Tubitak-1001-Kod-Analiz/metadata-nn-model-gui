@@ -9,6 +9,9 @@ import numpy as np
 from pathlib import Path
 import threading
 import time
+import subprocess
+import shutil
+import re
 
 # Import your existing modules
 try:
@@ -66,7 +69,7 @@ class FolderProcessingGUI:
         # Configure grid weights
         self.root.grid_rowconfigure(0, weight=1)
         self.root.grid_columnconfigure(0, weight=1)
-        main_frame.grid_rowconfigure(4, weight=1)
+        main_frame.grid_rowconfigure(6, weight=1)
         main_frame.grid_columnconfigure(0, weight=1)
 
         # Title
@@ -74,10 +77,36 @@ class FolderProcessingGUI:
                                 font=('Arial', 16, 'bold'))
         title_label.grid(row=0, column=0, pady=(0, 20))
 
+        # GitHub Repository Download Frame
+        github_frame = ttk.LabelFrame(
+            main_frame, text="GitHub Repository Download", padding="10")
+        github_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
+        github_frame.grid_columnconfigure(1, weight=1)
+
+        ttk.Label(github_frame, text="GitHub URL:").grid(
+            row=0, column=0, sticky=tk.W, padx=(0, 10))
+
+        self.github_url_var = tk.StringVar()
+        self.github_entry = ttk.Entry(
+            github_frame, textvariable=self.github_url_var)
+        self.github_entry.grid(
+            row=0, column=1, sticky=(tk.W, tk.E), padx=(0, 10))
+
+        self.download_button = ttk.Button(github_frame, text="Download Repository",
+                                          command=self.download_github_repo_threaded)
+        self.download_button.grid(row=0, column=2)
+
+        # Download status
+        self.download_status_var = tk.StringVar()
+        self.download_status_label = ttk.Label(
+            github_frame, textvariable=self.download_status_var)
+        self.download_status_label.grid(
+            row=1, column=0, columnspan=3, pady=(5, 0))
+
         # Model selection frame
         model_frame = ttk.LabelFrame(
             main_frame, text="Model Selection", padding="10")
-        model_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
+        model_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
         model_frame.grid_columnconfigure(1, weight=1)
 
         ttk.Label(model_frame, text="Select Model:").grid(
@@ -106,7 +135,7 @@ class FolderProcessingGUI:
         # Folder selection frame
         folder_frame = ttk.LabelFrame(
             main_frame, text="Folder Selection", padding="10")
-        folder_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
+        folder_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
         folder_frame.grid_columnconfigure(1, weight=1)
 
         ttk.Label(folder_frame, text="Selected Folder:").grid(
@@ -125,9 +154,10 @@ class FolderProcessingGUI:
         # Info frame
         info_frame = ttk.LabelFrame(
             main_frame, text="Information", padding="10")
-        info_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
+        info_frame.grid(row=4, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
 
         info_text = ("This tool will:\n"
+                     "• Download GitHub repositories to 'data_to_try' folder\n"
                      "• Scan the selected folder for Java files (.java)\n"
                      "• Process each file using content_before embedding only\n"
                      "• Use folder name as repository name\n"
@@ -138,7 +168,7 @@ class FolderProcessingGUI:
 
         # Control buttons frame
         control_frame = ttk.Frame(main_frame)
-        control_frame.grid(row=4, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
+        control_frame.grid(row=5, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
         control_frame.grid_columnconfigure(2, weight=1)
 
         self.process_button = ttk.Button(control_frame, text="Process Folder",
@@ -159,7 +189,7 @@ class FolderProcessingGUI:
         # Results frame
         results_frame = ttk.LabelFrame(
             main_frame, text="Processing Results", padding="10")
-        results_frame.grid(row=5, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        results_frame.grid(row=6, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         results_frame.grid_rowconfigure(0, weight=1)
         results_frame.grid_columnconfigure(0, weight=1)
 
@@ -175,7 +205,7 @@ class FolderProcessingGUI:
             "Ready - Select and load a model, then choose a folder to begin")
         status_bar = ttk.Label(
             main_frame, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W)
-        status_bar.grid(row=6, column=0, sticky=(tk.W, tk.E), pady=(10, 0))
+        status_bar.grid(row=7, column=0, sticky=(tk.W, tk.E), pady=(10, 0))
 
     def load_selected_model(self):
         """Load the selected model"""
@@ -586,6 +616,104 @@ class FolderProcessingGUI:
         """Clear the results text area"""
         self.results_text.delete(1.0, tk.END)
         self.progress_var.set(0)
+
+    def download_github_repo_threaded(self):
+        """Download GitHub repo in a separate thread"""
+        threading.Thread(target=self.download_github_repo, daemon=True).start()
+
+    def download_github_repo(self):
+        """Download a GitHub repository"""
+        github_url = self.github_url_var.get().strip()
+
+        if not github_url:
+            messagebox.showerror(
+                "Error", "Please enter a GitHub repository URL!")
+            return
+
+        # Validate GitHub URL
+        github_pattern = r'https://github\.com/[\w-]+/[\w-]+'
+        if not re.match(github_pattern, github_url):
+            messagebox.showerror(
+                "Error", "Invalid GitHub URL! Please enter a valid repository URL.")
+            return
+
+        try:
+            # Create data_to_try directory if it doesn't exist
+            data_dir = Path("data_to_try")
+            data_dir.mkdir(exist_ok=True)
+
+            # Extract repository name from URL
+            repo_name = github_url.rstrip('/').split('/')[-1]
+            repo_owner = github_url.rstrip('/').split('/')[-2]
+
+            # Update status
+            self.download_status_var.set(
+                f"Downloading {repo_owner}/{repo_name}...")
+            self.download_button.config(state="disabled")
+            self.root.update()
+
+            # Target directory
+            target_dir = data_dir / repo_name
+
+            # If directory exists, ask user
+            if target_dir.exists():
+                response = messagebox.askyesno(
+                    "Directory Exists",
+                    f"The repository '{repo_name}' already exists. Do you want to replace it?"
+                )
+                if response:
+                    shutil.rmtree(target_dir)
+                else:
+                    self.download_status_var.set("Download cancelled")
+                    self.download_button.config(state="normal")
+                    return
+
+            # Clone the repository
+            try:
+                # Check if git is installed
+                subprocess.run(["git", "--version"],
+                               check=True, capture_output=True)
+
+                # Clone the repository
+                result = subprocess.run(
+                    ["git", "clone", github_url, str(target_dir)],
+                    capture_output=True,
+                    text=True,
+                    check=True
+                )
+
+                self.download_status_var.set(
+                    f"Successfully downloaded {repo_name}")
+
+                # Ask if user wants to use this folder
+                response = messagebox.askyesno(
+                    "Download Complete",
+                    f"Repository downloaded to: {target_dir}\n\nDo you want to use this folder for processing?"
+                )
+
+                if response:
+                    self.folder_path_var.set(str(target_dir))
+                    self.check_ready_to_process()
+                    self.status_var.set(f"Selected folder: {target_dir}")
+
+            except subprocess.CalledProcessError as e:
+                if "git" in str(e):
+                    messagebox.showerror(
+                        "Git Not Found",
+                        "Git is not installed or not in PATH.\nPlease install Git to download repositories."
+                    )
+                else:
+                    messagebox.showerror(
+                        "Clone Error", f"Failed to clone repository:\n{e.stderr}")
+                self.download_status_var.set("Download failed")
+
+        except Exception as e:
+            messagebox.showerror(
+                "Download Error", f"Error downloading repository:\n{str(e)}")
+            self.download_status_var.set("Download failed")
+
+        finally:
+            self.download_button.config(state="normal")
 
     def run(self):
         """Start the GUI application"""
