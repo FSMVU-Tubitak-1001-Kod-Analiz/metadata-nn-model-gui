@@ -5,6 +5,7 @@ import joblib
 import torch
 import torch.nn as nn
 import pandas as pd
+import numpy as np
 from pathlib import Path
 import threading
 import time
@@ -26,19 +27,36 @@ class FolderProcessingGUI:
 
         # Global variables
         self.model = None
+        self.ml_model = None  # For ML models
+        self.current_model_type = None  # 'dnn' or 'ml'
         self.scaler_code = None
         self.scaler_repo = None
         self.device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
         self.class_labels = ["bug", "cleanup", "enhancement"]
 
         # Model and scaler paths - adjust these to your actual paths
-        self.model_directory = 'models/GCB_Pooler_embeddings_content_before_only_apache_balanced_46008_embedding_reponame.pth'
-        self.scaler_code_path = 'scalers/scaler_pooler_3labels_15336_embedding_reponame.pkl'  # Updated path
-        # For repo name embeddings
+        self.dnn_model_directory = 'models/GCB_Pooler_embeddings_content_before_only_apache_balanced_46008_embedding_reponame.pth'
+        self.scaler_code_path = 'scalers/scaler_pooler_3labels_15336_embedding_reponame.pkl'
         self.scaler_repo_path = 'scalers/scaler_pooler_3labels_15336_BERT.pkl'
 
+        # ML models directory
+        self.ml_models_directory = 'ml_models'
+
+        # Available models
+        self.available_models = {
+            'DNN (Deep Neural Network)': 'dnn',
+            'XGBoost': 'ml_models/XGBoost_model.pkl',
+            'Random Forest': 'ml_models/RandomForest_model.pkl',
+            'CatBoost': 'ml_models/CatBoost_model.pkl',
+            'LightGBM': 'ml_models/LightGBM_model.pkl',
+            'KNN': 'ml_models/KNN_model.pkl',
+            'Naive Bayes': 'ml_models/NaiveBayes_model.pkl',
+            'Logistic Regression': 'ml_models/LogisticRegression_model.pkl',
+            'AdaBoost': 'ml_models/AdaBoost_model.pkl',
+            'SVM': 'ml_models/SVM_model.pkl'
+        }
+
         self.setup_gui()
-        self.load_model_and_scalers()
 
     def setup_gui(self):
         # Main frame
@@ -48,7 +66,7 @@ class FolderProcessingGUI:
         # Configure grid weights
         self.root.grid_rowconfigure(0, weight=1)
         self.root.grid_columnconfigure(0, weight=1)
-        main_frame.grid_rowconfigure(3, weight=1)
+        main_frame.grid_rowconfigure(4, weight=1)
         main_frame.grid_columnconfigure(0, weight=1)
 
         # Title
@@ -56,10 +74,39 @@ class FolderProcessingGUI:
                                 font=('Arial', 16, 'bold'))
         title_label.grid(row=0, column=0, pady=(0, 20))
 
+        # Model selection frame
+        model_frame = ttk.LabelFrame(
+            main_frame, text="Model Selection", padding="10")
+        model_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
+        model_frame.grid_columnconfigure(1, weight=1)
+
+        ttk.Label(model_frame, text="Select Model:").grid(
+            row=0, column=0, sticky=tk.W, padx=(0, 10))
+
+        self.model_var = tk.StringVar()
+        self.model_combobox = ttk.Combobox(model_frame, textvariable=self.model_var,
+                                           values=list(
+                                               self.available_models.keys()),
+                                           state="readonly", width=30)
+        self.model_combobox.grid(
+            row=0, column=1, sticky=(tk.W, tk.E), padx=(0, 10))
+        self.model_combobox.set(
+            'DNN (Deep Neural Network)')  # Default selection
+
+        self.load_model_button = ttk.Button(model_frame, text="Load Model",
+                                            command=self.load_selected_model)
+        self.load_model_button.grid(row=0, column=2)
+
+        # Model status
+        self.model_status_var = tk.StringVar()
+        self.model_status_var.set("No model loaded")
+        ttk.Label(model_frame, textvariable=self.model_status_var,
+                  foreground="red").grid(row=1, column=0, columnspan=3, pady=(5, 0))
+
         # Folder selection frame
         folder_frame = ttk.LabelFrame(
             main_frame, text="Folder Selection", padding="10")
-        folder_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
+        folder_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
         folder_frame.grid_columnconfigure(1, weight=1)
 
         ttk.Label(folder_frame, text="Selected Folder:").grid(
@@ -78,19 +125,20 @@ class FolderProcessingGUI:
         # Info frame
         info_frame = ttk.LabelFrame(
             main_frame, text="Information", padding="10")
-        info_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
+        info_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
 
         info_text = ("This tool will:\n"
                      "• Scan the selected folder for Java files (.java)\n"
                      "• Process each file using content_before embedding only\n"
                      "• Use folder name as repository name\n"
-                     "• Classify each file as: bug, cleanup, or enhancement")
+                     "• Classify each file as: bug, cleanup, or enhancement\n"
+                     "• Support both DNN and traditional ML models")
         ttk.Label(info_frame, text=info_text, justify=tk.LEFT).grid(
             row=0, column=0, sticky=tk.W)
 
         # Control buttons frame
         control_frame = ttk.Frame(main_frame)
-        control_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
+        control_frame.grid(row=4, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
         control_frame.grid_columnconfigure(2, weight=1)
 
         self.process_button = ttk.Button(control_frame, text="Process Folder",
@@ -111,32 +159,48 @@ class FolderProcessingGUI:
         # Results frame
         results_frame = ttk.LabelFrame(
             main_frame, text="Processing Results", padding="10")
-        results_frame.grid(row=4, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        results_frame.grid(row=5, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         results_frame.grid_rowconfigure(0, weight=1)
         results_frame.grid_columnconfigure(0, weight=1)
 
         # Results text with scrollbar
         self.results_text = scrolledtext.ScrolledText(
-            results_frame, wrap=tk.WORD, width=100, height=30)
+            results_frame, wrap=tk.WORD, width=100, height=25)
         self.results_text.grid(
             row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 
         # Status bar
         self.status_var = tk.StringVar()
-        self.status_var.set("Ready - Load model and select a folder to begin")
+        self.status_var.set(
+            "Ready - Select and load a model, then choose a folder to begin")
         status_bar = ttk.Label(
             main_frame, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W)
-        status_bar.grid(row=5, column=0, sticky=(tk.W, tk.E), pady=(10, 0))
+        status_bar.grid(row=6, column=0, sticky=(tk.W, tk.E), pady=(10, 0))
 
-    def load_model_and_scalers(self):
-        """Load the trained model and scalers"""
+    def load_selected_model(self):
+        """Load the selected model"""
+        selected = self.model_var.get()
+        if not selected:
+            messagebox.showerror("Error", "Please select a model first!")
+            return
+
+        model_path = self.available_models[selected]
+
+        if model_path == 'dnn':
+            self.load_dnn_model()
+        else:
+            self.load_ml_model(model_path, selected)
+
+    def load_dnn_model(self):
+        """Load the DNN model and scalers"""
         try:
-            self.status_var.set("Loading model and scalers...")
+            self.status_var.set("Loading DNN model and scalers...")
             self.root.update()
 
             # Load model using dnn.instantiate_NN_model
-            self.model = dnn.instantiate_NN_model(self.model_directory)
-            print("Model loaded successfully.")
+            self.model = dnn.instantiate_NN_model(self.dnn_model_directory)
+            self.current_model_type = 'dnn'
+            print("DNN model loaded successfully.")
 
             # Load scalers
             if os.path.exists(self.scaler_code_path):
@@ -153,15 +217,49 @@ class FolderProcessingGUI:
                 raise FileNotFoundError(
                     f"Repo scaler not found: {self.scaler_repo_path}")
 
-            self.status_var.set("Model and scalers loaded successfully")
+            self.model_status_var.set("DNN model loaded successfully")
+            self.status_var.set("DNN model and scalers loaded successfully")
+            self.check_ready_to_process()
             messagebox.showinfo(
-                "Success", "Model and scalers loaded successfully!")
+                "Success", "DNN model and scalers loaded successfully!")
 
         except Exception as e:
-            error_msg = f"Error loading model or scalers: {str(e)}"
-            self.status_var.set("Error loading model")
+            error_msg = f"Error loading DNN model or scalers: {str(e)}"
+            self.status_var.set("Error loading DNN model")
+            self.model_status_var.set("Failed to load model")
             messagebox.showerror("Loading Error", error_msg)
             print(error_msg)
+
+    def load_ml_model(self, model_path, model_name):
+        """Load an ML model"""
+        try:
+            self.status_var.set(f"Loading {model_name}...")
+            self.root.update()
+
+            if os.path.exists(model_path):
+                self.ml_model = joblib.load(model_path)
+                self.current_model_type = 'ml'
+                self.model_status_var.set(f"{model_name} loaded successfully")
+                self.status_var.set(f"{model_name} loaded successfully")
+                self.check_ready_to_process()
+                messagebox.showinfo(
+                    "Success", f"{model_name} loaded successfully!")
+            else:
+                raise FileNotFoundError(f"Model file not found: {model_path}")
+
+        except Exception as e:
+            error_msg = f"Error loading {model_name}: {str(e)}"
+            self.status_var.set(f"Error loading {model_name}")
+            self.model_status_var.set("Failed to load model")
+            messagebox.showerror("Loading Error", error_msg)
+            print(error_msg)
+
+    def check_ready_to_process(self):
+        """Check if we're ready to process files"""
+        if self.folder_path_var.get() and (self.model or self.ml_model):
+            self.process_button.config(state="normal")
+        else:
+            self.process_button.config(state="disabled")
 
     def browse_folder(self):
         """Open folder selection dialog"""
@@ -169,19 +267,16 @@ class FolderProcessingGUI:
             title="Select folder containing Java files")
         if folder_path:
             self.folder_path_var.set(folder_path)
-            self.process_button.config(state="normal")
+            self.check_ready_to_process()
             self.status_var.set(f"Selected folder: {folder_path}")
 
     def get_java_files(self, folder_path):
         """Get all Java files from the selected folder"""
         java_files = []
         folder = Path(folder_path)
-
-        # Search for .java files recursively
         for java_file in folder.rglob("*.java"):
             if java_file.is_file():
                 java_files.append(java_file)
-
         return java_files
 
     def read_file_content(self, file_path):
@@ -200,10 +295,10 @@ class FolderProcessingGUI:
             print(f"Error reading file {file_path}: {e}")
             return None
 
-    def prepare_dataset(self, repo_name, content_before):
-        """Prepare dataset for a single file - adapted from your notebook"""
+    def prepare_dataset_for_dnn(self, repo_name, content_before):
+        """Prepare dataset for DNN model"""
         try:
-            print("Preparing dataset...")
+            print("Preparing dataset for DNN...")
             data = {
                 'full_repo_name': [repo_name],
                 'content_before': [content_before],
@@ -215,63 +310,69 @@ class FolderProcessingGUI:
             print("Generating GraphCodeBERT embeddings for content_before...")
             content_embedding = utils.get_bert_embedding(
                 content_before, model_type="graphcodebert")
-            print(
-                f"Content embedding shape after get_bert_embedding: {content_embedding.shape}")
-            print(
-                f"Content embedding device after get_bert_embedding: {content_embedding.device}")
 
-            # Tensor'ı doğru şekle getir: [1, 768] -> [768]
             if content_embedding.dim() > 1:
-                content_embedding = content_embedding.squeeze(
-                    0)  # İlk boyutu kaldır
+                content_embedding = content_embedding.squeeze(0)
 
-            print(
-                f"Content embedding shape after squeeze: {content_embedding.shape}")
-
-            # DataFrame'e eklemeden önce CPU'ya taşı
             df['embedding'] = [content_embedding.cpu()]
 
             # repo_name için düz BERT CLS token embedding'i
             print("Generating BERT embedding for repo_name...")
             repo_name_bert_embedding = utils.get_bert_embedding(
                 repo_name, model_type="text")
-            print(
-                f"Repo name embedding shape after get_bert_embedding: {repo_name_bert_embedding.shape}")
-            print(
-                f"Repo name embedding device after get_bert_embedding: {repo_name_bert_embedding.device}")
 
-            # Tensor'ı doğru şekle getir: [1, 768] -> [768]
             if repo_name_bert_embedding.dim() > 1:
-                repo_name_bert_embedding = repo_name_bert_embedding.squeeze(
-                    0)  # İlk boyutu kaldır
+                repo_name_bert_embedding = repo_name_bert_embedding.squeeze(0)
 
-            print(
-                f"Repo name embedding shape after squeeze: {repo_name_bert_embedding.shape}")
-
-            # DataFrame'e eklemeden önce CPU'ya taşı
             df['repo_name_tensor'] = [repo_name_bert_embedding.cpu()]
-
-            # Dummy label_tensor ekle
             df['label_tensor'] = [torch.tensor(
                 [0, 0, 0], dtype=torch.float32).cpu()]
 
-            print("Dataset prepared successfully.")
+            print("Dataset prepared successfully for DNN.")
             return df
 
         except Exception as e:
-            print(f"Error in prepare_dataset: {e}")
+            print(f"Error in prepare_dataset_for_dnn: {e}")
             return None
 
-    def process_single_file(self, file_path, repo_name):
-        """Process a single Java file and return prediction"""
+    def prepare_features_for_ml(self, repo_name, content_before):
+        """Prepare features for ML models"""
         try:
-            # Read file content
+            print("Preparing features for ML model...")
+
+            # Get embeddings
+            content_embedding = utils.get_bert_embedding(
+                content_before, model_type="graphcodebert")
+            if content_embedding.dim() > 1:
+                content_embedding = content_embedding.squeeze(0)
+
+            repo_embedding = utils.get_bert_embedding(
+                repo_name, model_type="text")
+            if repo_embedding.dim() > 1:
+                repo_embedding = repo_embedding.squeeze(0)
+
+            # Combine embeddings
+            combined_features = np.concatenate([
+                content_embedding.cpu().numpy(),
+                repo_embedding.cpu().numpy()
+            ])
+
+            # Reshape for single prediction
+            return combined_features.reshape(1, -1)
+
+        except Exception as e:
+            print(f"Error in prepare_features_for_ml: {e}")
+            return None
+
+    def process_single_file_dnn(self, file_path, repo_name):
+        """Process a single file using DNN model"""
+        try:
             content_before = self.read_file_content(file_path)
             if content_before is None:
                 return None, "Error reading file"
 
-            # Prepare dataset
-            df_prepared = self.prepare_dataset(repo_name, content_before)
+            df_prepared = self.prepare_dataset_for_dnn(
+                repo_name, content_before)
             if df_prepared is None:
                 return None, "Error preparing dataset"
 
@@ -279,11 +380,9 @@ class FolderProcessingGUI:
             test_loader = dnn.create_dataloader(
                 df=df_prepared, batch_size=1, shuffle=False)
 
-            print("Making prediction...")
-            # dummy_criterion for test_with_data_loader
+            print("Making prediction with DNN...")
             dummy_criterion = nn.CrossEntropyLoss()
 
-            # Use the test_with_data_loader from dnn.py which handles two scalers
             test_loss, test_accuracy, final_predicted_y, final_y = dnn.test_with_data_loader(
                 self.model,
                 test_loader,
@@ -292,29 +391,61 @@ class FolderProcessingGUI:
                 dummy_criterion
             )
 
-            print(f"Model Raw Outputs (logits): {final_predicted_y}")
             probabilities = torch.softmax(final_predicted_y, dim=1)
-            print(f"Model Probabilities: {probabilities}")
-
             predicted_class_index = torch.argmax(probabilities, dim=1).item()
 
-            # Map index to label (according to your notebook)
             idx_to_label = {0: "bug", 1: "cleanup", 2: "enhancement"}
             predicted_label = idx_to_label.get(
                 predicted_class_index, "Unknown")
 
-            # Get confidence score and all probabilities
             confidence = probabilities[0][predicted_class_index].item()
             all_probs = probabilities[0].tolist()
 
-            # Debug info
             debug_info = f"Conf: {confidence:.3f} | Probs: bug={all_probs[0]:.3f}, cleanup={all_probs[1]:.3f}, enhancement={all_probs[2]:.3f}"
 
             return predicted_label, debug_info
 
         except Exception as e:
-            print(f"Error processing file {file_path}: {e}")
+            print(f"Error processing file with DNN {file_path}: {e}")
             return None, f"Error: {str(e)}"
+
+    def process_single_file_ml(self, file_path, repo_name):
+        """Process a single file using ML model"""
+        try:
+            content_before = self.read_file_content(file_path)
+            if content_before is None:
+                return None, "Error reading file"
+
+            features = self.prepare_features_for_ml(repo_name, content_before)
+            if features is None:
+                return None, "Error preparing features"
+
+            print("Making prediction with ML model...")
+            prediction = self.ml_model.predict(features)
+
+            # If the model supports predict_proba, get probabilities
+            try:
+                probabilities = self.ml_model.predict_proba(features)[0]
+                confidence = probabilities[prediction[0]]
+                debug_info = f"Conf: {confidence:.3f} | Probs: bug={probabilities[0]:.3f}, cleanup={probabilities[1]:.3f}, enhancement={probabilities[2]:.3f}"
+            except:
+                debug_info = "No probability scores available"
+
+            idx_to_label = {0: "bug", 1: "cleanup", 2: "enhancement"}
+            predicted_label = idx_to_label.get(prediction[0], "Unknown")
+
+            return predicted_label, debug_info
+
+        except Exception as e:
+            print(f"Error processing file with ML {file_path}: {e}")
+            return None, f"Error: {str(e)}"
+
+    def process_single_file(self, file_path, repo_name):
+        """Process a single file based on current model type"""
+        if self.current_model_type == 'dnn':
+            return self.process_single_file_dnn(file_path, repo_name)
+        else:
+            return self.process_single_file_ml(file_path, repo_name)
 
     def process_folder_threaded(self):
         """Start folder processing in a separate thread"""
@@ -322,9 +453,17 @@ class FolderProcessingGUI:
 
     def process_folder(self):
         """Process all Java files in the selected folder"""
-        if not self.model or not self.scaler_code or not self.scaler_repo:
-            messagebox.showerror(
-                "Error", "Model and scalers must be loaded first!")
+        if self.current_model_type == 'dnn':
+            if not self.model or not self.scaler_code or not self.scaler_repo:
+                messagebox.showerror(
+                    "Error", "DNN model and scalers must be loaded first!")
+                return
+        elif self.current_model_type == 'ml':
+            if not self.ml_model:
+                messagebox.showerror("Error", "ML model must be loaded first!")
+                return
+        else:
+            messagebox.showerror("Error", "No model loaded!")
             return
 
         folder_path = self.folder_path_var.get()
@@ -333,10 +472,7 @@ class FolderProcessingGUI:
             return
 
         try:
-            # Disable process button
             self.process_button.config(state="disabled")
-
-            # Get Java files
             java_files = self.get_java_files(folder_path)
 
             if not java_files:
@@ -345,20 +481,17 @@ class FolderProcessingGUI:
                 self.process_button.config(state="normal")
                 return
 
-            # Clear previous results
             self.clear_results()
-
-            # Use folder name as repo name
             repo_name = os.path.basename(folder_path)
 
-            # Process files
             total_files = len(java_files)
             results = []
 
+            model_type = self.model_var.get()
             header_text = f"Processing {total_files} Java files from: {folder_path}\n"
             header_text += f"Repository Name: {repo_name}\n"
-            header_text += f"Device: {self.device}\n"
-            header_text += "Loading Graph Code Bert and Bert Uncased Models...\n"
+            header_text += f"Model: {model_type}\n"
+            header_text += f"Device: {self.device if self.current_model_type == 'dnn' else 'CPU'}\n"
             header_text += "=" * 100 + "\n\n"
 
             self.results_text.insert(tk.END, header_text)
@@ -367,14 +500,12 @@ class FolderProcessingGUI:
             start_time = time.time()
 
             for i, java_file in enumerate(java_files):
-                # Update progress
                 progress = (i / total_files) * 100
                 self.progress_var.set(progress)
                 self.status_var.set(
                     f"Processing file {i+1}/{total_files}: {java_file.name}")
                 self.root.update()
 
-                # Process file
                 relative_path = java_file.relative_to(folder_path)
                 prediction, info = self.process_single_file(
                     java_file, repo_name)
@@ -398,7 +529,6 @@ class FolderProcessingGUI:
                 self.results_text.see(tk.END)
                 self.results_text.update()
 
-            # Complete processing
             end_time = time.time()
             processing_time = end_time - start_time
 
@@ -412,7 +542,6 @@ class FolderProcessingGUI:
             summary_text += f"Processing time: {processing_time:.2f} seconds\n"
             summary_text += f"Average time per file: {processing_time/total_files:.2f} seconds\n\n"
 
-            # Count predictions
             if results:
                 prediction_counts = {}
                 for result in results:
@@ -427,7 +556,6 @@ class FolderProcessingGUI:
                     percentage = (count / len(results)) * 100 if results else 0
                     summary_text += f"{label:12}: {count:4d} files ({percentage:5.1f}%)\n"
 
-                # Most common prediction
                 most_common = max(prediction_counts.items(),
                                   key=lambda x: x[1])
                 summary_text += f"\nMost common: {most_common[0]} ({most_common[1]} files)\n"
@@ -435,7 +563,6 @@ class FolderProcessingGUI:
             self.results_text.insert(tk.END, summary_text)
             self.results_text.see(tk.END)
 
-            # Update status and progress
             self.progress_var.set(100)
             self.status_var.set(
                 f"Completed! {len(results)}/{total_files} files processed in {processing_time:.1f}s")
@@ -452,7 +579,6 @@ class FolderProcessingGUI:
             print(error_msg)
 
         finally:
-            # Re-enable process button
             self.process_button.config(state="normal")
             self.progress_var.set(0)
 
