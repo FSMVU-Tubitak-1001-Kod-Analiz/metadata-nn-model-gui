@@ -26,7 +26,7 @@ class FolderProcessingGUI:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("Java Code Classification - Folder Processing")
-        self.root.geometry("1200x900")
+        self.root.geometry("1400x1000")
 
         # Global variables
         self.model = None
@@ -59,153 +59,468 @@ class FolderProcessingGUI:
             'SVM': 'ml_models/SVM_model.pkl'
         }
 
+        # TreeView için renkler
+        self.prediction_colors = {
+            'bug': '#ffebee',        # Light red
+            'cleanup': '#fff3e0',    # Light orange
+            'enhancement': '#e8f5e8',  # Light green
+            'error': '#ffcccb',      # Light pink for errors
+            'folder': '#f0f0f0'      # Light gray for folders
+        }
+
         self.setup_gui()
 
     def setup_gui(self):
-        # Main frame
-        main_frame = ttk.Frame(self.root, padding="10")
-        main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        # Ana container - Paned Window kullanarak bölümleri ayıralım
+        main_paned = ttk.PanedWindow(self.root, orient=tk.HORIZONTAL)
+        main_paned.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        # Configure grid weights
-        self.root.grid_rowconfigure(0, weight=1)
-        self.root.grid_columnconfigure(0, weight=1)
-        main_frame.grid_rowconfigure(6, weight=1)
-        main_frame.grid_columnconfigure(0, weight=1)
+        # Sol panel - Kontroller
+        left_frame = ttk.Frame(main_paned, width=500)
+        main_paned.add(left_frame, weight=1)
 
+        # Sağ panel - Sonuçlar
+        right_frame = ttk.Frame(main_paned, width=900)
+        main_paned.add(right_frame, weight=2)
+
+        self.setup_left_panel(left_frame)
+        self.setup_right_panel(right_frame)
+
+    def setup_left_panel(self, parent):
+        """Sol paneli kur - kontroller"""
         # Title
-        title_label = ttk.Label(main_frame, text="Java Code Classification Tool",
+        title_label = ttk.Label(parent, text="Java Code Classification Tool",
                                 font=('Arial', 16, 'bold'))
-        title_label.grid(row=0, column=0, pady=(0, 20))
+        title_label.pack(pady=(0, 20))
 
         # GitHub Repository Download Frame
         github_frame = ttk.LabelFrame(
-            main_frame, text="GitHub Repository Download", padding="10")
-        github_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
-        github_frame.grid_columnconfigure(1, weight=1)
+            parent, text="GitHub Repository Download", padding="10")
+        github_frame.pack(fill=tk.X, pady=(0, 10))
 
-        ttk.Label(github_frame, text="GitHub URL:").grid(
-            row=0, column=0, sticky=tk.W, padx=(0, 10))
+        ttk.Label(github_frame, text="GitHub URL:").pack(anchor=tk.W)
 
         self.github_url_var = tk.StringVar()
         self.github_entry = ttk.Entry(
             github_frame, textvariable=self.github_url_var)
-        self.github_entry.grid(
-            row=0, column=1, sticky=(tk.W, tk.E), padx=(0, 10))
+        self.github_entry.pack(fill=tk.X, pady=(5, 5))
 
         self.download_button = ttk.Button(github_frame, text="Download Repository",
                                           command=self.download_github_repo_threaded)
-        self.download_button.grid(row=0, column=2)
+        self.download_button.pack()
 
         # Download status
         self.download_status_var = tk.StringVar()
         self.download_status_label = ttk.Label(
             github_frame, textvariable=self.download_status_var)
-        self.download_status_label.grid(
-            row=1, column=0, columnspan=3, pady=(5, 0))
+        self.download_status_label.pack(pady=(5, 0))
 
         # Model selection frame
         model_frame = ttk.LabelFrame(
-            main_frame, text="Model Selection", padding="10")
-        model_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
-        model_frame.grid_columnconfigure(1, weight=1)
+            parent, text="Model Selection", padding="10")
+        model_frame.pack(fill=tk.X, pady=(0, 10))
 
-        ttk.Label(model_frame, text="Select Model:").grid(
-            row=0, column=0, sticky=tk.W, padx=(0, 10))
+        ttk.Label(model_frame, text="Select Model:").pack(anchor=tk.W)
 
         self.model_var = tk.StringVar()
         self.model_combobox = ttk.Combobox(model_frame, textvariable=self.model_var,
                                            values=list(
                                                self.available_models.keys()),
-                                           state="readonly", width=30)
-        self.model_combobox.grid(
-            row=0, column=1, sticky=(tk.W, tk.E), padx=(0, 10))
+                                           state="readonly")
+        self.model_combobox.pack(fill=tk.X, pady=(5, 5))
         self.model_combobox.set(
             'DNN (Deep Neural Network)')  # Default selection
 
         self.load_model_button = ttk.Button(model_frame, text="Load Model",
                                             command=self.load_selected_model)
-        self.load_model_button.grid(row=0, column=2)
+        self.load_model_button.pack()
 
         # Model status
         self.model_status_var = tk.StringVar()
         self.model_status_var.set("No model loaded")
         ttk.Label(model_frame, textvariable=self.model_status_var,
-                  foreground="red").grid(row=1, column=0, columnspan=3, pady=(5, 0))
+                  foreground="red").pack(pady=(5, 0))
 
         # Folder selection frame
         folder_frame = ttk.LabelFrame(
-            main_frame, text="Folder Selection", padding="10")
-        folder_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
-        folder_frame.grid_columnconfigure(1, weight=1)
+            parent, text="Folder Selection", padding="10")
+        folder_frame.pack(fill=tk.X, pady=(0, 10))
 
-        ttk.Label(folder_frame, text="Selected Folder:").grid(
-            row=0, column=0, sticky=tk.W, padx=(0, 10))
+        ttk.Label(folder_frame, text="Selected Folder:").pack(anchor=tk.W)
 
         self.folder_path_var = tk.StringVar()
         self.folder_entry = ttk.Entry(
             folder_frame, textvariable=self.folder_path_var, state="readonly")
-        self.folder_entry.grid(
-            row=0, column=1, sticky=(tk.W, tk.E), padx=(0, 10))
+        self.folder_entry.pack(fill=tk.X, pady=(5, 5))
 
         self.browse_button = ttk.Button(
             folder_frame, text="Browse", command=self.browse_folder)
-        self.browse_button.grid(row=0, column=2)
+        self.browse_button.pack()
 
         # Info frame
-        info_frame = ttk.LabelFrame(
-            main_frame, text="Information", padding="10")
-        info_frame.grid(row=4, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
+        info_frame = ttk.LabelFrame(parent, text="Information", padding="10")
+        info_frame.pack(fill=tk.X, pady=(0, 10))
 
         info_text = ("This tool will:\n"
-                     "• Download GitHub repositories to 'data_to_try' folder\n"
-                     "• Scan the selected folder for Java files (.java)\n"
-                     "• Process each file using content_before embedding only\n"
-                     "• Use folder name as repository name\n"
-                     "• Classify each file as: bug, cleanup, or enhancement\n"
-                     "• Support both DNN and traditional ML models")
-        ttk.Label(info_frame, text=info_text, justify=tk.LEFT).grid(
-            row=0, column=0, sticky=tk.W)
+                     "• Download GitHub repositories\n"
+                     "• Scan folder for Java files\n"
+                     "• Classify as: bug, cleanup, enhancement\n"
+                     "• Show results in tree structure")
+        ttk.Label(info_frame, text=info_text,
+                  justify=tk.LEFT).pack(anchor=tk.W)
 
         # Control buttons frame
-        control_frame = ttk.Frame(main_frame)
-        control_frame.grid(row=5, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
-        control_frame.grid_columnconfigure(2, weight=1)
+        control_frame = ttk.Frame(parent)
+        control_frame.pack(fill=tk.X, pady=(0, 10))
 
-        self.process_button = ttk.Button(control_frame, text="Process Folder",
+        button_frame = ttk.Frame(control_frame)
+        button_frame.pack(fill=tk.X)
+
+        self.process_button = ttk.Button(button_frame, text="Process Folder",
                                          command=self.process_folder_threaded, state="disabled")
-        self.process_button.grid(row=0, column=0, padx=(0, 10))
+        self.process_button.pack(side=tk.LEFT, padx=(0, 5))
 
         self.clear_button = ttk.Button(
-            control_frame, text="Clear Results", command=self.clear_results)
-        self.clear_button.grid(row=0, column=1, padx=(0, 10))
+            button_frame, text="Clear Results", command=self.clear_results)
+        self.clear_button.pack(side=tk.LEFT, padx=(0, 5))
+
+        self.export_button = ttk.Button(
+            button_frame, text="Export Results", command=self.export_results)
+        self.export_button.pack(side=tk.LEFT)
 
         # Progress bar
         self.progress_var = tk.DoubleVar()
         self.progress_bar = ttk.Progressbar(
             control_frame, variable=self.progress_var, maximum=100)
-        self.progress_bar.grid(
-            row=0, column=2, sticky=(tk.W, tk.E), padx=(10, 0))
-
-        # Results frame
-        results_frame = ttk.LabelFrame(
-            main_frame, text="Processing Results", padding="10")
-        results_frame.grid(row=6, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        results_frame.grid_rowconfigure(0, weight=1)
-        results_frame.grid_columnconfigure(0, weight=1)
-
-        # Results text with scrollbar
-        self.results_text = scrolledtext.ScrolledText(
-            results_frame, wrap=tk.WORD, width=100, height=25)
-        self.results_text.grid(
-            row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        self.progress_bar.pack(fill=tk.X, pady=(10, 0))
 
         # Status bar
         self.status_var = tk.StringVar()
         self.status_var.set(
             "Ready - Select and load a model, then choose a folder to begin")
         status_bar = ttk.Label(
-            main_frame, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W)
-        status_bar.grid(row=7, column=0, sticky=(tk.W, tk.E), pady=(10, 0))
+            parent, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W)
+        status_bar.pack(fill=tk.X, pady=(10, 0))
+
+    def setup_right_panel(self, parent):
+        """Sağ paneli kur - sonuçlar"""
+        # Results frame
+        results_frame = ttk.LabelFrame(
+            parent, text="Processing Results", padding="10")
+        results_frame.pack(fill=tk.BOTH, expand=True)
+
+        # TreeView için notebook (tabbed interface)
+        self.notebook = ttk.Notebook(results_frame)
+        self.notebook.pack(fill=tk.BOTH, expand=True)
+
+        # Tree View Tab
+        tree_frame = ttk.Frame(self.notebook)
+        self.notebook.add(tree_frame, text="File Structure")
+
+        # TreeView oluştur
+        self.setup_treeview(tree_frame)
+
+        # Summary Tab
+        summary_frame = ttk.Frame(self.notebook)
+        self.notebook.add(summary_frame, text="Summary")
+
+        # Summary için scrolled text
+        self.summary_text = scrolledtext.ScrolledText(
+            summary_frame, wrap=tk.WORD)
+        self.summary_text.pack(fill=tk.BOTH, expand=True)
+
+        # Details Tab
+        details_frame = ttk.Frame(self.notebook)
+        self.notebook.add(details_frame, text="Detailed Log")
+
+        # Details için scrolled text
+        self.details_text = scrolledtext.ScrolledText(
+            details_frame, wrap=tk.WORD)
+        self.details_text.pack(fill=tk.BOTH, expand=True)
+
+    def setup_treeview(self, parent):
+        """TreeView'i kur"""
+        # TreeView container
+        tree_container = ttk.Frame(parent)
+        tree_container.pack(fill=tk.BOTH, expand=True)
+
+        # TreeView columns
+        columns = ('prediction', 'confidence', 'details')
+        self.tree = ttk.Treeview(
+            tree_container, columns=columns, show='tree headings')
+
+        # Column headings
+        self.tree.heading('#0', text='File Path', anchor=tk.W)
+        self.tree.heading('prediction', text='Prediction', anchor=tk.CENTER)
+        self.tree.heading('confidence', text='Confidence', anchor=tk.CENTER)
+        self.tree.heading('details', text='Details', anchor=tk.W)
+
+        # Column widths
+        self.tree.column('#0', width=300, minwidth=200)
+        self.tree.column('prediction', width=100, minwidth=80)
+        self.tree.column('confidence', width=80, minwidth=60)
+        self.tree.column('details', width=200, minwidth=150)
+
+        # Scrollbars
+        tree_scrollbar_y = ttk.Scrollbar(
+            tree_container, orient=tk.VERTICAL, command=self.tree.yview)
+        tree_scrollbar_x = ttk.Scrollbar(
+            tree_container, orient=tk.HORIZONTAL, command=self.tree.xview)
+        self.tree.configure(yscrollcommand=tree_scrollbar_y.set,
+                            xscrollcommand=tree_scrollbar_x.set)
+
+        # Pack TreeView ve scrollbar'lar
+        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        tree_scrollbar_y.pack(side=tk.RIGHT, fill=tk.Y)
+        tree_scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X)
+
+        # TreeView event bindings
+        self.tree.bind('<Double-1>', self.on_tree_double_click)
+        # Right click menu
+        self.tree.bind('<Button-3>', self.on_tree_right_click)
+
+        # Context menu
+        self.create_context_menu()
+
+        # Configure tags for colors
+        for pred_type, color in self.prediction_colors.items():
+            self.tree.tag_configure(pred_type, background=color)
+
+    def create_context_menu(self):
+        """Context menu oluştur"""
+        self.context_menu = tk.Menu(self.root, tearoff=0)
+        self.context_menu.add_command(
+            label="Copy Path", command=self.copy_selected_path)
+        self.context_menu.add_command(
+            label="Show Details", command=self.show_selected_details)
+        self.context_menu.add_separator()
+        self.context_menu.add_command(
+            label="Expand All", command=self.expand_all)
+        self.context_menu.add_command(
+            label="Collapse All", command=self.collapse_all)
+
+    def on_tree_double_click(self, event):
+        """TreeView double click event"""
+        item = self.tree.selection()[0] if self.tree.selection() else None
+        if item:
+            self.show_item_details(item)
+
+    def on_tree_right_click(self, event):
+        """TreeView right click event"""
+        item = self.tree.identify_row(event.y)
+        if item:
+            self.tree.selection_set(item)
+            self.context_menu.post(event.x_root, event.y_root)
+
+    def copy_selected_path(self):
+        """Seçili path'i kopyala"""
+        item = self.tree.selection()[0] if self.tree.selection() else None
+        if item:
+            path = self.get_item_full_path(item)
+            self.root.clipboard_clear()
+            self.root.clipboard_append(path)
+            messagebox.showinfo("Copied", f"Path copied to clipboard:\n{path}")
+
+    def get_item_full_path(self, item):
+        """TreeView item'inin tam path'ini al"""
+        path_parts = []
+        current = item
+
+        while current:
+            text = self.tree.item(current)['text']
+            if text and text != 'Root':
+                path_parts.append(text)
+            current = self.tree.parent(current)
+
+        return '/'.join(reversed(path_parts))
+
+    def show_selected_details(self):
+        """Seçili item'in detaylarını göster"""
+        item = self.tree.selection()[0] if self.tree.selection() else None
+        if item:
+            self.show_item_details(item)
+
+    def show_item_details(self, item):
+        """Item detaylarını popup'ta göster"""
+        item_data = self.tree.item(item)
+        text = item_data['text']
+        values = item_data['values']
+
+        if values:  # Sadece dosyalar için
+            details = f"File: {text}\n\n"
+            details += f"Prediction: {values[0]}\n"
+            details += f"Confidence: {values[1]}\n"
+            details += f"Details: {values[2]}\n"
+            details += f"Full Path: {self.get_item_full_path(item)}"
+
+            messagebox.showinfo("File Details", details)
+
+    def expand_all(self):
+        """Tüm tree'yi genişlet"""
+        def expand_recursive(item):
+            self.tree.item(item, open=True)
+            for child in self.tree.get_children(item):
+                expand_recursive(child)
+
+        for item in self.tree.get_children():
+            expand_recursive(item)
+
+    def collapse_all(self):
+        """Tüm tree'yi kapat"""
+        def collapse_recursive(item):
+            self.tree.item(item, open=False)
+            for child in self.tree.get_children(item):
+                collapse_recursive(child)
+
+        for item in self.tree.get_children():
+            collapse_recursive(item)
+
+    def clear_results(self):
+        """Sonuçları temizle"""
+        # TreeView'i temizle
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+
+        # Text alanlarını temizle
+        self.summary_text.delete(1.0, tk.END)
+        self.details_text.delete(1.0, tk.END)
+
+        self.progress_var.set(0)
+
+    def create_folder_structure_in_tree(self, files_data, root_folder_name):
+        """TreeView'de klasör yapısını oluştur"""
+        # Root node ekle
+        root_item = self.tree.insert(
+            '', 'end', text=root_folder_name, open=True, tags=['folder'])
+
+        # Klasör yapısını oluşturmak için gerekli veri yapısı
+        folder_items = {root_folder_name: root_item}
+
+        for file_data in files_data:
+            relative_path = file_data['file']
+            prediction = file_data.get('prediction', 'error')
+            info = file_data.get('info', 'No info')
+
+            # Path'i parçalara ayır
+            path_parts = str(relative_path).split(os.sep)
+
+            # Her klasör seviyesi için item oluştur
+            current_path = root_folder_name
+            parent_item = root_item
+
+            for i, part in enumerate(path_parts):
+                current_path = os.path.join(
+                    current_path, part) if current_path != root_folder_name else os.path.join(root_folder_name, part)
+
+                if i == len(path_parts) - 1:  # Son part = dosya
+                    # Confidence bilgisini parse et
+                    confidence = "N/A"
+                    if "Conf:" in info:
+                        try:
+                            conf_part = info.split("Conf:")[1].split("|")[
+                                0].strip()
+                            confidence = conf_part
+                        except:
+                            confidence = "N/A"
+
+                    # Dosya item'ini ekle
+                    file_item = self.tree.insert(parent_item, 'end',
+                                                 text=part,
+                                                 values=(
+                                                     prediction, confidence, info),
+                                                 tags=[prediction])
+                else:  # Klasör
+                    if current_path not in folder_items:
+                        folder_item = self.tree.insert(parent_item, 'end',
+                                                       text=part,
+                                                       open=True,
+                                                       tags=['folder'])
+                        folder_items[current_path] = folder_item
+                    parent_item = folder_items[current_path]
+
+    def update_summary_tab(self, results, processing_time, total_files):
+        """Summary tab'ını güncelle"""
+        summary_text = "PROCESSING SUMMARY\n"
+        summary_text += "=" * 50 + "\n\n"
+        summary_text += f"📁 Repository: {os.path.basename(self.folder_path_var.get())}\n"
+        summary_text += f"🔧 Model: {self.model_var.get()}\n"
+        summary_text += f"💻 Device: {self.device if self.current_model_type == 'dnn' else 'CPU'}\n\n"
+
+        summary_text += f"📊 STATISTICS:\n"
+        summary_text += f"   • Total files found: {total_files}\n"
+        summary_text += f"   • Successfully processed: {len(results)}\n"
+        summary_text += f"   • Success rate: {len(results)/total_files*100:.1f}%\n"
+        summary_text += f"   • Processing time: {processing_time:.2f} seconds\n"
+        summary_text += f"   • Average per file: {processing_time/total_files:.2f} seconds\n\n"
+
+        if results:
+            prediction_counts = {}
+            for result in results:
+                pred = result['prediction']
+                prediction_counts[pred] = prediction_counts.get(pred, 0) + 1
+
+            summary_text += "🎯 PREDICTION DISTRIBUTION:\n"
+            for label in ['bug', 'cleanup', 'enhancement']:
+                count = prediction_counts.get(label, 0)
+                percentage = (count / len(results)) * 100 if results else 0
+                # Emoji için
+                emoji = "🐛" if label == 'bug' else "🧹" if label == 'cleanup' else "✨"
+                bar = "█" * int(percentage / 5)  # Simple bar chart
+                summary_text += f"   {emoji} {label.capitalize():12}: {count:4d} files ({percentage:5.1f}%) {bar}\n"
+
+            most_common = max(prediction_counts.items(), key=lambda x: x[1])
+            summary_text += f"\n🏆 Most common: {most_common[0]} ({most_common[1]} files)\n"
+
+        self.summary_text.delete(1.0, tk.END)
+        self.summary_text.insert(tk.END, summary_text)
+
+    def export_results(self):
+        """Sonuçları CSV olarak export et"""
+        if not self.tree.get_children():
+            messagebox.showwarning("No Data", "No results to export!")
+            return
+
+        filename = filedialog.asksaveasfilename(
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+            title="Export Results"
+        )
+
+        if filename:
+            try:
+                import csv
+                with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
+                    writer = csv.writer(csvfile)
+                    writer.writerow(
+                        ['File Path', 'Prediction', 'Confidence', 'Details'])
+
+                    def export_item(item, path=""):
+                        item_data = self.tree.item(item)
+                        text = item_data['text']
+                        values = item_data['values']
+
+                        current_path = os.path.join(
+                            path, text) if path else text
+
+                        if values:  # Dosya
+                            writer.writerow(
+                                [current_path, values[0], values[1], values[2]])
+
+                        # Alt öğeleri işle
+                        for child in self.tree.get_children(item):
+                            export_item(child, current_path)
+
+                    for root_item in self.tree.get_children():
+                        for child in self.tree.get_children(root_item):
+                            export_item(child, "")
+
+                messagebox.showinfo("Export Complete",
+                                    f"Results exported to:\n{filename}")
+            except Exception as e:
+                messagebox.showerror(
+                    "Export Error", f"Error exporting results:\n{str(e)}")
+
+    # Buradan sonra mevcut metodlar aynı kalacak, sadece process_folder metodunda değişiklik var
 
     def load_selected_model(self):
         """Load the selected model"""
@@ -518,14 +833,16 @@ class FolderProcessingGUI:
             results = []
 
             model_type = self.model_var.get()
+
+            # Details tab'ına başlık ekle
             header_text = f"Processing {total_files} Java files from: {folder_path}\n"
             header_text += f"Repository Name: {repo_name}\n"
             header_text += f"Model: {model_type}\n"
             header_text += f"Device: {self.device if self.current_model_type == 'dnn' else 'CPU'}\n"
             header_text += "=" * 100 + "\n\n"
 
-            self.results_text.insert(tk.END, header_text)
-            self.results_text.update()
+            self.details_text.insert(tk.END, header_text)
+            self.details_text.update()
 
             start_time = time.time()
 
@@ -555,52 +872,52 @@ class FolderProcessingGUI:
                     result_text += f"            ERROR: {info}\n"
                     result_text += "-" * 80 + "\n"
 
-                self.results_text.insert(tk.END, result_text)
-                self.results_text.see(tk.END)
-                self.results_text.update()
+                    results.append({
+                        'file': str(relative_path),
+                        'prediction': 'error',
+                        'info': info
+                    })
+
+                self.details_text.insert(tk.END, result_text)
+                self.details_text.see(tk.END)
+                self.details_text.update()
 
             end_time = time.time()
             processing_time = end_time - start_time
 
-            # Summary
+            # TreeView'e sonuçları ekle
+            self.create_folder_structure_in_tree(results, repo_name)
+
+            # Summary tab'ını güncelle
+            self.update_summary_tab(results, processing_time, total_files)
+
+            # Details tab'ına özet ekle
             summary_text = "\n" + "=" * 100 + "\n"
-            summary_text += "PROCESSING SUMMARY\n"
+            summary_text += "PROCESSING COMPLETE\n"
             summary_text += "=" * 100 + "\n"
-            summary_text += f"Total files processed: {len(results)}\n"
+            summary_text += f"Total files processed: {len([r for r in results if r['prediction'] != 'error'])}\n"
             summary_text += f"Total files found: {total_files}\n"
-            summary_text += f"Success rate: {len(results)/total_files*100:.1f}%\n"
+            success_count = len(
+                [r for r in results if r['prediction'] != 'error'])
+            summary_text += f"Success rate: {success_count/total_files*100:.1f}%\n"
             summary_text += f"Processing time: {processing_time:.2f} seconds\n"
-            summary_text += f"Average time per file: {processing_time/total_files:.2f} seconds\n\n"
+            summary_text += f"Average time per file: {processing_time/total_files:.2f} seconds\n"
 
-            if results:
-                prediction_counts = {}
-                for result in results:
-                    pred = result['prediction']
-                    prediction_counts[pred] = prediction_counts.get(
-                        pred, 0) + 1
-
-                summary_text += "PREDICTION DISTRIBUTION:\n"
-                summary_text += "-" * 50 + "\n"
-                for label in ['bug', 'cleanup', 'enhancement']:
-                    count = prediction_counts.get(label, 0)
-                    percentage = (count / len(results)) * 100 if results else 0
-                    summary_text += f"{label:12}: {count:4d} files ({percentage:5.1f}%)\n"
-
-                most_common = max(prediction_counts.items(),
-                                  key=lambda x: x[1])
-                summary_text += f"\nMost common: {most_common[0]} ({most_common[1]} files)\n"
-
-            self.results_text.insert(tk.END, summary_text)
-            self.results_text.see(tk.END)
+            self.details_text.insert(tk.END, summary_text)
+            self.details_text.see(tk.END)
 
             self.progress_var.set(100)
             self.status_var.set(
-                f"Completed! {len(results)}/{total_files} files processed in {processing_time:.1f}s")
+                f"Completed! {success_count}/{total_files} files processed in {processing_time:.1f}s")
+
+            # TreeView'de ilk tab'ı seç
+            self.notebook.select(0)
 
             messagebox.showinfo("Processing Complete",
-                                f"Successfully processed {len(results)}/{total_files} Java files!\n"
+                                f"Successfully processed {success_count}/{total_files} Java files!\n"
                                 f"Processing time: {processing_time:.1f} seconds\n"
-                                f"Average: {processing_time/total_files:.2f}s per file")
+                                f"Average: {processing_time/total_files:.2f}s per file\n\n"
+                                f"Check the File Structure tab for detailed results!")
 
         except Exception as e:
             error_msg = f"Error during processing: {str(e)}"
@@ -611,11 +928,6 @@ class FolderProcessingGUI:
         finally:
             self.process_button.config(state="normal")
             self.progress_var.set(0)
-
-    def clear_results(self):
-        """Clear the results text area"""
-        self.results_text.delete(1.0, tk.END)
-        self.progress_var.set(0)
 
     def download_github_repo_threaded(self):
         """Download GitHub repo in a separate thread"""
