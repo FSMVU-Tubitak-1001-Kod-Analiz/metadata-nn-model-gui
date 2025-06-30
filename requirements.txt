@@ -1,0 +1,60 @@
+# Python 3.12.3 - Tested and verified environment
+# Core dependencies - exact versions from working environment
+torch==2.5.1
+pandas==2.2.3
+numpy==1.26.4
+scikit-learn==1.6.1
+joblib==1.4.2
+
+# Machine Learning models - exact versions
+xgboost==3.0.2
+catboost==1.2.7
+lightgbm==4.6.0
+
+# NLP and embeddings - exact versions
+transformers==4.51.3
+huggingface-hub==0.31.1
+tokenizers==0.21.0
+
+# PyTorch ecosystem - exact versions
+torchaudio==2.5.1
+torchvision==0.20.1
+
+# Additional ML libraries - exact versions
+scikit-image==0.25.0
+imbalanced-learn==0.13.0
+scipy==1.12.0
+matplotlib==3.10.0
+seaborn==0.13.2
+plotly==6.1.2
+
+# Utilities - exact versions
+tqdm==4.67.1
+psutil==5.9.0
+requests==2.32.3
+pyyaml==6.0.2
+pillow==11.1.0
+packaging==24.2
+
+# Additional dependencies for GUI and file handling
+beautifulsoup4==4.12.3
+charset-normalizer==3.3.2
+urllib3==2.3.0
+certifi==2025.6.15
+
+# Image processing
+imageio==2.37.0
+tifffile==2025.2.18
+
+# Specialized libraries (if needed)
+statsmodels==0.14.4
+sympy==1.13.1
+networkx==3.4.2
+
+# For development (optional)
+jupyter==1.0.0
+jupyterlab==4.3.4
+notebook==7.3.2
+
+# Note: tkinter is included with Python by default
+# CUDA support: pytorch-cuda==12.1 (automatic with torch if CUDA available)
