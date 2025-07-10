@@ -543,7 +543,7 @@ class FolderProcessingGUI:
             self.root.update()
 
             # Load model using dnn.instantiate_NN_model
-            self.model = dnn.instantiate_NN_model(self.dnn_model_directory)
+            self.model = DNN.instantiate_NN_model(self.dnn_model_directory)
             self.current_model_type = 'dnn'
             print("DNN model loaded successfully.")
 
@@ -722,13 +722,13 @@ class FolderProcessingGUI:
                 return None, "Error preparing dataset"
 
             print("Creating DataLoader...")
-            test_loader = dnn.create_dataloader(
+            test_loader = DNN.create_dataloader(
                 df=df_prepared, batch_size=1, shuffle=False)
 
             print("Making prediction with DNN...")
             dummy_criterion = nn.CrossEntropyLoss()
 
-            test_loss, test_accuracy, final_predicted_y, final_y = dnn.test_with_data_loader(
+            test_loss, test_accuracy, final_predicted_y, final_y = DNN.test_with_data_loader(
                 self.model,
                 test_loader,
                 self.scaler_code,
