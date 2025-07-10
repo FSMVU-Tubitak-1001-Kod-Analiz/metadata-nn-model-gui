@@ -5,7 +5,7 @@ import os
 import torch.nn as nn
 import torch
 import pandas as pd
-print("dnn.py YÜKLENDİ - VERSİYON 1.0")
+print("DNN.PY YÜKLENDİ - VERSİYON 1.0")
 
 embedding_directory = 'embeddings/GCB_Pooler_embeddings_patch_before_largewithcodedata_15300limit3label'
 model_directory = 'models/two_pipelines_StScaler_pooler_6layers_invertednn_100epoch_batch_normalization.pth'
