@@ -15,7 +15,7 @@ import re
 
 # Import your existing modules
 try:
-    import dnn
+    import DNN
     import utils
 except ImportError as e:
     print(f"Warning: Could not import modules: {e}")
