@@ -4,6 +4,7 @@ Datasets/
 Embeddings/
 embeddings_for_inputs_with_code.tar.gz
 .ipynb_checkpoints/
+venv/
 
 data_to_try/
 ml_models/ 
