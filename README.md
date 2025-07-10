@@ -18,6 +18,7 @@ A comprehensive GUI-based tool for classifying Java code changes into three cate
 
 ### System Requirements
 - **Python 3.12.3** (tested and verified - exact version recommended)
+- Torch with CUDA compatibility
 - CUDA-compatible GPU (optional, for DNN model acceleration)
 - Git (for repository downloading)
 - 8GB+ RAM recommended
